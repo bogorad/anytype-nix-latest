@@ -24,6 +24,34 @@ Or run it directly from GitHub:
 nix run github:bogorad/anytype-nix-latest
 ```
 
+## SOPS-backed vault key
+
+This package can bypass Linux Secret Service/keytar for the Anytype vault key
+and read it from a root-managed file such as a `sops-nix` secret.
+
+```nix
+{ config, pkgs, ... }:
+
+{
+  environment.systemPackages = [
+    (pkgs.anytype.override {
+      vaultKeyFile = config.sops.secrets.anytype_vault_key.path;
+      vaultKeyAccountId = "YOUR_ANYTYPE_ACCOUNT_ID";
+    })
+  ];
+}
+```
+
+`vaultKeyAccountId` is the Anytype account id, not a space id. For an existing
+profile it is usually available with:
+
+```bash
+jq -r .accountId ~/.config/anytype/localStorage-dev.json
+```
+
+Only the secret path and account id are embedded in the wrapper. The secret
+content stays outside the Nix store and is read at runtime.
+
 ## Update
 
 ```bash

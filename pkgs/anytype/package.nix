@@ -20,6 +20,8 @@
   copyDesktopItems,
   writableTmpDirAsHomeHook,
   commandLineArgs ? "",
+  vaultKeyFile ? null,
+  vaultKeyAccountId ? null,
 }:
 
 stdenvNoCC.mkDerivation (finalAttrs: {
@@ -116,6 +118,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     ./0001-feat-update-Disable-auto-checking-for-updates-and-updating-manually.patch
     ./0002-remove-grpc-devtools.patch
     ./0003-remove-desktop-entry.patch
+    ./0004-support-file-backed-vault-key.patch
   ];
 
   configurePhase = ''
@@ -182,11 +185,16 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     cp LICENSE.md $out/share
 
-    makeWrapper '${lib.getExe electron}' $out/bin/anytype \
-      --set-default ELECTRON_IS_DEV 0 \
-      --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}" \
-      --add-flags $out/lib/anytype/ \
+    wrapperArgs=(
+      --set-default ELECTRON_IS_DEV 0
+      ${lib.optionalString (vaultKeyFile != null) "--set-default ANYTYPE_VAULT_KEY_FILE ${lib.escapeShellArg vaultKeyFile}"}
+      ${lib.optionalString (vaultKeyAccountId != null) "--set-default ANYTYPE_VAULT_KEY_ACCOUNT_ID ${lib.escapeShellArg vaultKeyAccountId}"}
+      --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
+      --add-flags "$out/lib/anytype/"
       --add-flags ${lib.escapeShellArg commandLineArgs}
+    )
+
+    makeWrapper '${lib.getExe electron}' $out/bin/anytype "''${wrapperArgs[@]}"
 
     wrapProgram $out/lib/anytype/dist/nativeMessagingHost \
       --prefix PATH : ${lib.makeBinPath [ lsof ]}

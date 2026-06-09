@@ -1,0 +1,95 @@
+diff --git a/electron/ts/api.ts b/electron/ts/api.ts
+index 4a978ca2..e5ca5c6b 100644
+--- a/electron/ts/api.ts
++++ b/electron/ts/api.ts
+@@ -17,6 +17,8 @@ import { getSafeStorage } from './safeStorage';
+ import { AppWindow, TabView, TabData, CreateTabOptions, AppConfig, Bounds } from './types';
+ 
+ const KEYTAR_SERVICE = 'Anytype';
++const VAULT_KEY_FILE_ENV = 'ANYTYPE_VAULT_KEY_FILE';
++const VAULT_KEY_ACCOUNT_ID_ENV = 'ANYTYPE_VAULT_KEY_ACCOUNT_ID';
+ 
+ class Api {
+ 
+@@ -299,13 +301,68 @@ class Api {
+ 		win.webContents.session.addWordToSpellCheckerDictionary(s);
+ 	};
+ 
+-	keytarSet (win: AppWindow, key: string, value: string): void {
++	fileBackedVaultKeyFile (key: string): string {
++		const file = process.env[VAULT_KEY_FILE_ENV] || '';
++		const accountId = process.env[VAULT_KEY_ACCOUNT_ID_ENV] || '';
++
++		if (!file || !accountId || (key !== accountId)) {
++			return '';
++		};
++
++		return file;
++	};
++
++	readFileBackedVaultKey (file: string): string | null {
++		try {
++			const value = fs.readFileSync(file, 'utf8').replace(/\s+$/g, '');
++
++			if (!value) {
++				Util.log('error', '[Api].keytarGet: file-backed vault key is empty');
++				return null;
++			};
++
++			return value;
++		} catch (err: unknown) {
++			const message = err instanceof Error ? err.message : String(err);
++			Util.log('error', `[Api].keytarGet: failed to read file-backed vault key: ${message}`);
++			return null;
++		};
++	};
++
++	async keytarSet (win: AppWindow, key: string, value: string): Promise<void> {
++		const file = this.fileBackedVaultKeyFile(key);
++
++		if (file) {
++			const fileValue = this.readFileBackedVaultKey(file);
++
++			if (!fileValue) {
++				Util.log('error', '[Api].keytarSet: file-backed vault key is configured but unreadable');
++				return;
++			};
++
++			if (value && (fileValue !== value)) {
++				Util.log('error', '[Api].keytarSet: entered vault key differs from file-backed vault key; leaving file unchanged');
++			};
++
++			Util.log('info', '[Api].keytarSet: file-backed vault key configured; skipping keytar write');
++			return;
++		};
++
+ 		if (key && value) {
+-			keytar.setPassword(KEYTAR_SERVICE, key, value);
++			await keytar.setPassword(KEYTAR_SERVICE, key, value);
+ 		};
+ 	};
+ 
+ 	async keytarGet (win: AppWindow, key: string): Promise<string | null> {
++		const file = this.fileBackedVaultKeyFile(key);
++		if (file) {
++			const value = this.readFileBackedVaultKey(file);
++			if (value) {
++				Util.log('info', '[Api].keytarGet: using file-backed vault key');
++			};
++			return value;
++		};
++
+ 		const maxRetries = is.windows ? 3 : 1;
+ 		const retryDelay = 500; // ms
+ 
+@@ -335,3 +392,10 @@ class Api {
+ 	keytarDelete (win: AppWindow, key: string): void {
++		const file = this.fileBackedVaultKeyFile(key);
++
++		if (file) {
++			Util.log('info', '[Api].keytarDelete: file-backed vault key configured; leaving file unchanged');
++			return;
++		};
++
+ 		keytar.deletePassword(KEYTAR_SERVICE, key);
+ 	};
