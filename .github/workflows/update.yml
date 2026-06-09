@@ -1,0 +1,79 @@
+name: Update Anytype
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Specific Anytype version to update to, without leading v"
+        required: false
+        type: string
+      force:
+        description: "Refresh hashes even when the latest version is already packaged"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-anytype
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - name: Install updater tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Update package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPDATE_ANYTYPE_VERSION: ${{ inputs.version }}
+          UPDATE_ANYTYPE_FORCE: ${{ inputs.force && '1' || '0' }}
+        run: scripts/update-anytype.sh
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check flake
+        if: steps.changes.outputs.changed == 'true'
+        run: nix flake check --no-build --allow-import-from-derivation
+
+      - name: Build Anytype Heart
+        if: steps.changes.outputs.changed == 'true'
+        run: nix build .#anytype-heart --print-build-logs
+
+      - name: Build Anytype
+        if: steps.changes.outputs.changed == 'true'
+        run: nix build .#anytype --print-build-logs
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          version=$(nix eval --raw .#anytype.version)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pkgs/anytype/package.nix pkgs/anytype-heart/package.nix
+          git commit -m "Update Anytype to ${version}"
+          git push
