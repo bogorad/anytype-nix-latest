@@ -22,6 +22,7 @@
   commandLineArgs ? "",
   vaultKeyFile ? null,
   vaultKeyAccountId ? null,
+  vaultKeyAccountIdFile ? null,
 }:
 
 stdenvNoCC.mkDerivation (finalAttrs: {
@@ -126,6 +127,18 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     cp -R ${finalAttrs.node_modules}/. .
     patchShebangs node_modules
+    substituteInPlace electron/ts/api.ts \
+      --replace-fail "__ANYTYPE_NIX_VAULT_KEY_FILE__" ${
+        lib.escapeShellArg (builtins.toJSON (if vaultKeyFile != null then vaultKeyFile else ""))
+      } \
+      --replace-fail "__ANYTYPE_NIX_VAULT_KEY_ACCOUNT_ID__" ${
+        lib.escapeShellArg (builtins.toJSON (if vaultKeyAccountId != null then vaultKeyAccountId else ""))
+      } \
+      --replace-fail "__ANYTYPE_NIX_VAULT_KEY_ACCOUNT_ID_FILE__" ${
+        lib.escapeShellArg (
+          builtins.toJSON (if vaultKeyAccountIdFile != null then vaultKeyAccountIdFile else "")
+        )
+      }
 
     runHook postConfigure
   '';
@@ -187,8 +200,15 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     wrapperArgs=(
       --set-default ELECTRON_IS_DEV 0
-      ${lib.optionalString (vaultKeyFile != null) "--set-default ANYTYPE_VAULT_KEY_FILE ${lib.escapeShellArg vaultKeyFile}"}
-      ${lib.optionalString (vaultKeyAccountId != null) "--set-default ANYTYPE_VAULT_KEY_ACCOUNT_ID ${lib.escapeShellArg vaultKeyAccountId}"}
+      ${lib.optionalString (
+        vaultKeyFile != null
+      ) "--set-default ANYTYPE_VAULT_KEY_FILE ${lib.escapeShellArg vaultKeyFile}"}
+      ${lib.optionalString (
+        vaultKeyAccountId != null
+      ) "--set-default ANYTYPE_VAULT_KEY_ACCOUNT_ID ${lib.escapeShellArg vaultKeyAccountId}"}
+      ${lib.optionalString (
+        vaultKeyAccountIdFile != null
+      ) "--set-default ANYTYPE_VAULT_KEY_ACCOUNT_ID_FILE ${lib.escapeShellArg vaultKeyAccountIdFile}"}
       --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
       --add-flags "$out/lib/anytype/"
       --add-flags ${lib.escapeShellArg commandLineArgs}
