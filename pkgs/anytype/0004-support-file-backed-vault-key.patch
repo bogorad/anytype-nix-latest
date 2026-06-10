@@ -15,7 +15,7 @@ index 4a978ca2..e5ca5c6b 100644
  
  class Api {
  
-@@ -299,13 +305,95 @@ class Api {
+@@ -299,13 +305,105 @@ class Api {
  		win.webContents.session.addWordToSpellCheckerDictionary(s);
  	};
  
@@ -45,6 +45,16 @@ index 4a978ca2..e5ca5c6b 100644
 +			Util.log('error', `[Api].keytarGet: failed to read file-backed account id: ${message}`);
 +			return '';
 +		};
++	};
++
++	keytarGetAccountId (win: AppWindow): string {
++		const accountId = this.fileBackedVaultKeyAccountId();
++
++		if (accountId) {
++			Util.log('info', '[Api].keytarGetAccountId: using file-backed account id');
++		};
++
++		return accountId;
 +	};
 +
 +	fileBackedVaultKeyFile (key: string): string {
@@ -113,7 +123,7 @@ index 4a978ca2..e5ca5c6b 100644
  		const maxRetries = is.windows ? 3 : 1;
  		const retryDelay = 500; // ms
  
-@@ -335,3 +421,10 @@ class Api {
+@@ -335,3 +431,10 @@ class Api {
  	keytarDelete (win: AppWindow, key: string): void {
 +		const file = this.fileBackedVaultKeyFile(key);
 +
@@ -124,3 +134,76 @@ index 4a978ca2..e5ca5c6b 100644
 +
  		keytar.deletePassword(KEYTAR_SERVICE, key);
  	};
+diff --git a/src/ts/app.tsx b/src/ts/app.tsx
+index 5249c3d1..8b8e4afd 100644
+--- a/src/ts/app.tsx
++++ b/src/ts/app.tsx
+@@ -292 +292 @@ const App = () => {
+-		const accountId = Storage.get('accountId');
++		let accountId = Storage.get('accountId');
+@@ -433,6 +433 @@ const App = () => {
+-		if (!accountId) {
+-			U.Router.go('/auth/select', { replace: true, onRouteChange: cb });
+-			return;
+-		};
+-
+-		Renderer.send('getTab', tabId).then((tab: any) => {
++		const initAccount = () => Renderer.send('getTab', tabId).then((tab: any) => {
+@@ -467,0 +463,21 @@ const App = () => {
++
++		if (!accountId) {
++			Renderer.send('keytarGetAccountId').then((configuredAccountId: string) => {
++				accountId = String(configuredAccountId || '').trim();
++
++				if (!accountId) {
++					U.Router.go('/auth/select', { replace: true, onRouteChange: cb });
++					return;
++				};
++
++				Storage.set('accountId', accountId);
++				S.Common.redirectSet(route);
++				U.Router.go('/auth/setup/init', routeParam);
++			}).catch((err: any) => {
++				console.error('[App] Error retrieving file-backed account id:', err);
++				U.Router.go('/auth/select', { replace: true, onRouteChange: cb });
++			});
++			return;
++		};
++
++		initAccount();
+diff --git a/src/ts/component/page/auth/setup.tsx b/src/ts/component/page/auth/setup.tsx
+index 5651a633..a36420fc 100644
+--- a/src/ts/component/page/auth/setup.tsx
++++ b/src/ts/component/page/auth/setup.tsx
+@@ -17 +17 @@ const PageAuthSetup = forwardRef<I.PageRef, I.PageComponent>((props, ref) => {
+-		const accountId = Storage.get('accountId');
++		let accountId = Storage.get('accountId');
+@@ -19,6 +19 @@ const PageAuthSetup = forwardRef<I.PageRef, I.PageComponent>((props, ref) => {
+-		if (!accountId) {
+-			U.Router.go('/auth/select', { replace: true });
+-			return;
+-		};
+-
+-		Renderer.send('keytarGet', accountId).then((phrase: string) => {
++		const recover = () => Renderer.send('keytarGet', accountId).then((phrase: string) => {
+@@ -47,0 +43,20 @@ const PageAuthSetup = forwardRef<I.PageRef, I.PageComponent>((props, ref) => {
++
++		if (!accountId) {
++			Renderer.send('keytarGetAccountId').then((configuredAccountId: string) => {
++				accountId = String(configuredAccountId || '').trim();
++
++				if (!accountId) {
++					U.Router.go('/auth/select', { replace: true });
++					return;
++				};
++
++				Storage.set('accountId', accountId);
++				recover();
++			}).catch((err: any) => {
++				console.error('[Setup] Error retrieving file-backed account id:', err);
++				U.Router.go('/auth/select', { replace: true });
++			});
++			return;
++		};
++
++		recover();
