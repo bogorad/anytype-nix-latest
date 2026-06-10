@@ -29,28 +29,56 @@ nix run github:bogorad/anytype-nix-latest
 This package can bypass Linux Secret Service/keytar for the Anytype vault key
 and read it from a root-managed file such as a `sops-nix` secret.
 
+Make the vault key and account id available as runtime secret files, readable by
+the user that launches Anytype:
+
 ```nix
 { config, pkgs, ... }:
 
 {
+  sops.secrets."anytype/vault_key" = {
+    owner = "alice";
+    mode = "0400";
+  };
+
+  sops.secrets."anytype/account_id" = {
+    owner = "alice";
+    mode = "0400";
+  };
+
   environment.systemPackages = [
     (pkgs.anytype.override {
-      vaultKeyFile = config.sops.secrets.anytype_vault_key.path;
-      vaultKeyAccountId = "YOUR_ANYTYPE_ACCOUNT_ID";
+      vaultKeyFile = config.sops.secrets."anytype/vault_key".path;
+      vaultKeyAccountIdFile = config.sops.secrets."anytype/account_id".path;
     })
   ];
 }
 ```
 
-`vaultKeyAccountId` is the Anytype account id, not a space id. For an existing
-profile it is usually available with:
+The example above expects secret names shaped like:
+
+```yaml
+anytype:
+  vault_key: ENC[...]
+  account_id: ENC[...]
+```
+
+`vaultKeyAccountIdFile` must point to a file containing the Anytype account id,
+not a space id. For an existing profile it is usually available with:
 
 ```bash
 jq -r .accountId ~/.config/anytype/localStorage-dev.json
 ```
 
-Only the secret path and account id are embedded in the wrapper. The secret
-content stays outside the Nix store and is read at runtime.
+If you do not keep the account id in SOPS, a literal account id is also
+supported:
+
+```nix
+vaultKeyAccountId = "YOUR_ANYTYPE_ACCOUNT_ID";
+```
+
+Only file paths and literal account ids are embedded in the Nix store. Secret
+contents stay outside the Nix store and are read at runtime.
 
 ## Update
 
